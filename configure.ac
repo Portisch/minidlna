@@ -386,7 +386,7 @@ CFLAGS="$CFLAGS_SAVE"
 if test -n "$CYGWIN_OS"; then
     AC_CHECK_LIB([z], [gzopen], [], [])
     AC_CHECK_LIB([bz2], [BZ2_bzopen], [], [])
-    LIBS="-lavcodec -lavutil $LIBICONV $LIBINTL $LIBS"
+    LIBS="-lavcodec -lavutil -lswresample $LIBICONV $LIBINTL $LIBS"
 fi
 
 LDFLAGS_SAVE="$LDFLAGS"
