@@ -383,6 +383,12 @@ AC_COMPILE_IFELSE(
      ])
 CFLAGS="$CFLAGS_SAVE"
 
+if test -n "$CYGWIN_OS"; then
+    AC_CHECK_LIB([z], [gzopen], [], [])
+    AC_CHECK_LIB([bz2], [BZ2_bzopen], [], [])
+    LIBS="-lavcodec -lavutil $LIBICONV $LIBINTL $LIBS"
+fi
+
 LDFLAGS_SAVE="$LDFLAGS"
 for dir in "" /usr/local $SEARCH_DIR; do
     if test -n "$dir"; then
@@ -606,7 +612,11 @@ AC_ARG_ENABLE(static,
 	if test "$enableval" = "yes"; then
 		STATIC_CFLAGS="-DSTATIC"
 		AC_SUBST(STATIC_CFLAGS)
-		STATIC_LDFLAGS="-Wl,-Bstatic"
+		if test -z "$CYGWIN_OS"; then
+			STATIC_LDFLAGS="-Wl,-Bstatic"
+		else
+			STATIC_LDFLAGS="-Wl,-static -static-libgcc"
+		fi
 		AC_SUBST(STATIC_LDFLAGS)
                 AC_MSG_RESULT([yes])
         else
@@ -617,6 +627,21 @@ AC_ARG_ENABLE(static,
         ]
 )
 
+if test -n "$CYGWIN_OS"; then
+AC_MSG_CHECKING([whether to enable Windows profile support])
+AC_ARG_ENABLE(win-profile,
+	[  --enable-win-profile    enable Windows profile support],[
+	if test "$enableval" = "yes"; then
+		AC_DEFINE(WIN_PROFILE_SUPPORT, 1, [Define to 1 if you want to enable Windows profile support])
+		AC_MSG_RESULT([yes])
+	else
+		AC_MSG_RESULT([no])
+	fi
+	],[
+		AC_MSG_RESULT([no])
+	]
+)
+fi
 
 case "$target_os" in
 	darwin*)
@@ -637,6 +662,15 @@ case "$target_os" in
 		;;
         openbsd*)
                 OS_URL=http://www.openbsd.org/
+                ;;
+        cygwin*)
+                OS_URL=http://www.cygwin.com/
+                AC_DEFINE(HAVE_INOTIFY, [1], [support inotify equivalent function on Cygwin])
+                if test "$target_cpu" != "x86_64"; then
+                        LIBS="$LIBS -lws2_32 -liphlpapi"
+                else
+                        LIBS="$LIBS -liphlpapi"
+                fi
                 ;;
         *)
                 echo "Unknown OS : $target_os"

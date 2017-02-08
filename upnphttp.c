@@ -1854,6 +1854,9 @@ SendResp_dlnafile(struct upnphttp *h, char *object)
 	                char path[PATH_MAX];
 	                char mime[32];
 	                char dlna[96];
+#ifdef __CYGWIN__
+	                int caption_exist;
+#endif  // __CYGWIN__
 	              } last_file = { 0, 0 };
 #if USE_FORK
 	pid_t newpid = 0;
@@ -1925,6 +1928,10 @@ SendResp_dlnafile(struct upnphttp *h, char *object)
 			last_file.dlna[0] = '\0';
 		sqlite3_free_table(result);
 	}
+#ifdef __CYGWIN__
+	if( h->reqflags & FLAG_CAPTION )
+		last_file.caption_exist = sql_get_int_field(db, "SELECT ID from CAPTIONS where ID = '%lld'", (long long)id);
+#endif  // __CYGWIN__
 #if USE_FORK
 	newpid = process_fork(h->req_client);
 	if( newpid > 0 )
@@ -2040,7 +2047,11 @@ SendResp_dlnafile(struct upnphttp *h, char *object)
 
 	if( h->reqflags & FLAG_CAPTION )
 	{
+#ifndef __CYGWIN__
 		if( sql_get_int_field(db, "SELECT ID from CAPTIONS where ID = '%lld'", (long long)id) > 0 )
+#else  // __CYGWIN__
+		if( last_file.caption_exist )
+#endif  // __CYGWIN__
 			strcatf(&str, "CaptionInfo.sec: http://%s:%d/Captions/%lld.srt\r\n",
 			              lan_addr[h->iface].str, runtime_vars.port, (long long)id);
 	}

@@ -96,6 +96,10 @@
 #include "tivo_beacon.h"
 #include "tivo_utils.h"
 #include "avahi.h"
+#ifdef __CYGWIN__
+#include <sys/cygwin.h>
+#include <windows.h>
+#endif // __CYGWIN__
 
 #if SQLITE_VERSION_NUMBER < 3005001
 # warning "Your SQLite3 library appears to be too old!  Please use 3.5.1 or newer."
@@ -293,11 +297,68 @@ open_db(sqlite3 **sq3)
 	return new_db;
 }
 
+#ifdef __CYGWIN__
+static void
+delete_db_cygwin(char *db_path)
+{
+	char real_path[PATH_MAX+1], path_tmp[PATH_MAX];
+
+	SHFILEOPSTRUCT file_op = {
+		NULL,
+		FO_DELETE,
+		real_path,
+		NULL,
+		FOF_SILENT | FOF_NOCONFIRMATION | FOF_NOERRORUI,
+		FALSE,
+		NULL,
+		""
+	};
+
+	snprintf(path_tmp, sizeof(path_tmp), "%s/files.db", db_path);
+	if (unlink(path_tmp) != 0) {
+		DPRINTF(E_ERROR, L_GENERAL, "cannot delete \"files.db\" : %s\n", strerror(errno));
+	}
+	snprintf(path_tmp, sizeof(path_tmp), "%s/art_cache", db_path);
+	if (cygwin_conv_path(CCP_POSIX_TO_WIN_A | CCP_ABSOLUTE, path_tmp, real_path, PATH_MAX) != 0)
+		return;
+	real_path[strlen(real_path)+1] = '\0';
+	if (SHFileOperationA(&file_op) != 0)
+		DPRINTF(E_ERROR, L_GENERAL, "cannot delete \"art_cache\"\n");
+	return;
+}
+
+#ifdef WIN_PROFILE_SUPPORT
+static char optionsfile_cygwin[PATH_MAX] = {'\0'};
+static char pidfilename_cygwin[PATH_MAX] = {'\0'};
+#endif // WIN_PROFILE_SUPPORT
+
+static char *
+realpath_conv_path(char *path, char *resolved_path)
+{
+	char *ret=NULL;
+
+	if ((cygwin_posix_path_list_p(path) == FALSE) || (strchr(path, '\\') != NULL))
+	{
+		if (cygwin_conv_path(CCP_WIN_A_TO_POSIX | CCP_ABSOLUTE, path, resolved_path, PATH_MAX) == 0)
+			ret = resolved_path;
+	}
+	else
+		ret = realpath(path, resolved_path);
+
+	return(ret);
+}
+
+#define realpath(x, y) realpath_conv_path(x, y)
+
+#endif // __CYGWIN__
+
 static void
 check_db(sqlite3 *db, int new_db, pid_t *scanner_pid)
 {
 	struct media_dir_s *media_path = NULL;
+#ifndef __CYGWIN__
 	char cmd[PATH_MAX*2];
+#endif // __CYGWIN__
 	char **result;
 	int i, rows = 0;
 	int ret;
@@ -354,9 +415,13 @@ rescan:
 				ret, DB_VERSION);
 		sqlite3_close(db);
 
+#ifndef __CYGWIN__
 		snprintf(cmd, sizeof(cmd), "rm -rf %s/files.db %s/art_cache", db_path, db_path);
 		if (system(cmd) != 0)
 			DPRINTF(E_FATAL, L_GENERAL, "Failed to clean old file cache!  Exiting...\n");
+#else // __CYGWIN__
+		delete_db_cygwin(db_path);
+#endif // __CYGWIN__
 
 		open_db(&db);
 		if (CreateDatabase() != 0)
@@ -476,8 +541,20 @@ static void init_nls(void)
 	messages = setlocale(LC_MESSAGES, "");
 	if (!messages)
 		messages = "unset";
+#ifndef __CYGWIN__  
 	locale_dir = bindtextdomain("minidlna", getenv("TEXTDOMAINDIR"));
 	DPRINTF(E_DEBUG, L_GENERAL, "Using locale dir '%s' and locale langauge %s/%s\n", locale_dir, messages, ctype);
+#else // __CYGWIN__
+{
+	char *textdomaindir, *path=db_path, conv_path[PATH_MAX];
+	if( (textdomaindir = getenv("TEXTDOMAINDIR")) != NULL )
+	{
+		realpath_conv_path(textdomaindir, conv_path);
+		path = conv_path;
+	}
+	fprintf(stderr, "Using locale dir %s\n", bindtextdomain("minidlna", path));
+}
+#endif //  __CYGWIN__  
 	textdomain("minidlna");
 #endif
 }
@@ -500,7 +577,11 @@ init(int argc, char **argv)
 	int options_flag = 0;
 	struct sigaction sa;
 	const char * presurl = NULL;
+#if defined(__CYGWIN__) && defined(WIN_PROFILE_SUPPORT)
+	const char * optionsfile = optionsfile_cygwin;
+#else
 	const char * optionsfile = "/etc/minidlna.conf";
+#endif // __CYGWIN__
 	char mac_str[13];
 	char *string, *word;
 	char *path;
@@ -593,6 +674,15 @@ init(int argc, char **argv)
 			types = ALL_MEDIA;
 			path = ary_options[i].value;
 			word = strchr(path, ',');
+#ifdef __CYGWIN__
+			if ((cygwin_posix_path_list_p(path) == FALSE) || (strchr(path, '\\') != NULL))
+			{
+				if (cygwin_conv_path(CCP_WIN_A_TO_POSIX | CCP_ABSOLUTE, path, buf, PATH_MAX))
+					word = NULL;
+			}
+			else
+				strncpy(buf, path, PATH_MAX);
+#endif // __CYGWIN__
 			if (word && (access(path, F_OK) != 0))
 			{
 				types = 0;
@@ -859,9 +949,13 @@ init(int argc, char **argv)
 			SETFLAG(RESCAN_MASK);
 			break;
 		case 'R':
+#ifndef __CYGWIN__
 			snprintf(buf, sizeof(buf), "rm -rf %s/files.db %s/art_cache", db_path, db_path);
 			if (system(buf) != 0)
 				DPRINTF(E_FATAL, L_GENERAL, "Failed to clean old file cache %s. EXITING\n", db_path);
+#else // __CYGWIN__
+			delete_db_cygwin(db_path);
+#endif // __CYGWIN__
 			break;
 		case 'u':
 			if (i+1 != argc)
@@ -1065,6 +1159,22 @@ main(int argc, char **argv)
 
 	for (i = 0; i < L_MAX; i++)
 		log_level[i] = E_WARN;
+  
+#if defined(__CYGWIN__) && defined(WIN_PROFILE_SUPPORT)
+	{
+		char *localappdata;
+		if( (localappdata = getenv("LOCALAPPDATA")) == NULL ) // Windows7, Vista
+			 localappdata = getenv("APPDATA");				 // Windows XP
+		if( localappdata != NULL )
+		{
+			cygwin_conv_path (CCP_WIN_A_TO_POSIX | CCP_ABSOLUTE, localappdata, db_path, PATH_MAX);
+			strcat(db_path, "/minidlna");
+			sprintf(optionsfile_cygwin, "%s/minidlna.conf", db_path);
+			sprintf(pidfilename_cygwin, "%s/minidlna.pid", db_path);
+			pidfilename = pidfilename_cygwin;
+		}
+	}
+#endif // __CYGWIN__  
 
 	ret = init(argc, argv);
 	if (ret != 0)
@@ -1078,6 +1188,10 @@ main(int argc, char **argv)
 	}
 
 	LIST_INIT(&upnphttphead);
+
+#ifdef __CYGWIN__
+	DPRINTF(E_INFO, L_GENERAL, "db_path = %s\n", db_path);
+#endif // __CYGWIN__
 
 	ret = open_db(NULL);
 	if (ret == 0)
@@ -1255,6 +1369,10 @@ main(int argc, char **argv)
 		FD_ZERO(&writeset);
 		upnpevents_selectfds(&readset, &writeset, &max_fd);
 
+#ifdef __CYGWIN__
+		if (scanning)
+			timeout.tv_sec = 1;
+#endif // __CYGWIN__
 		ret = select(max_fd+1, &readset, &writeset, 0, &timeout);
 		if (ret < 0)
 		{
@@ -1277,7 +1395,11 @@ main(int argc, char **argv)
 			ProcessTiVoBeacon(sbeacon);
 		}
 #endif
+#ifndef __CYGWIN__
 		if (smonitor >= 0 && FD_ISSET(smonitor, &readset))
+#else // __CYGWIN__
+		if (smonitor == -2)
+#endif // __CYGWIN__
 		{
 			ProcessMonitorEvent(smonitor);
 		}

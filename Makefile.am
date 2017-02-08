@@ -54,6 +54,7 @@ minidlnad_LDADD = \
 	@LIBINTL@ \
 	@LIBICONV@ \
 	-lFLAC $(flacogglibs) $(vorbislibs) $(avahilibs)
+	-lFLAC  $(vorbisflag) $(flacoggflag)
 
 minidlnad_LDFLAGS = @STATIC_LDFLAGS@
 
@@ -66,6 +67,7 @@ testupnpdescgen_LDADD = \
 	@LIBAVUTIL_LIBS@ \
 	@LIBEXIF_LIBS@ \
 	-lFLAC $(flacogglibs) $(vorbislibs) $(avahilibs)
+	-lFLAC  $(vorbisflag) $(flacoggflag)
 
 SUFFIXES = .tmpl .
 
