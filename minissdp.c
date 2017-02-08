@@ -117,7 +117,31 @@ OpenAndConfSSDPReceiveSocket(void)
 	 * to receive datagramms send to this multicast address.
 	 * To specify the local nics we want to use we have to use setsockopt,
 	 * see AddMulticastMembership(...). */
+#ifdef __CYGWIN__
+	// Windows doesn't allow (for some reason) multicast join on already binded socket
+	{
+		int ret;
+		struct ip_mreq imr;	/* Ip multicast membership */
+		/* setting up imr structure */
+		memset(&imr, '\0', sizeof(imr));
+		imr.imr_multiaddr.s_addr = inet_addr(SSDP_MCAST_ADDR);
+		imr.imr_interface.s_addr = htonl(INADDR_ANY);
+		/* Setting the socket options will guarantee, tha we will only receive
+		 * multicast traffic on a specific Interface.
+		 * In addition the kernel is instructed to send an igmp message (choose
+		 * mcast group) on the specific interface/subnet. */
+		ret = setsockopt(s, IPPROTO_IP, IP_ADD_MEMBERSHIP, (void *)&imr, sizeof(imr));
+		if (ret < 0 && errno != EADDRINUSE)
+		{
+			DPRINTF(E_ERROR, L_SSDP, "setsockopt(udp, IP_ADD_MEMBERSHIP): %s\n",
+				strerror(errno));
+			DPRINTF(E_WARN, L_SSDP, "Failed to add multicast membership for address 0.0.0.0\n");
+		}
+	}
+	sockname.sin_addr.s_addr = htonl(INADDR_ANY);
+#else
 	sockname.sin_addr.s_addr = inet_addr(SSDP_MCAST_ADDR);
+#endif // __CYGWIN__
 
 	if (bind(s, (struct sockaddr *)&sockname, sizeof(struct sockaddr_in)) < 0)
 	{
@@ -183,13 +207,13 @@ OpenAndConfSSDPNotifySocket(struct lan_addr_s *iface)
 		close(s);
 		return -1;
 	}
-
+#ifndef __CYGWIN__
 	if (AddMulticastMembership(sssdp, iface) < 0)
 	{
 		DPRINTF(E_WARN, L_SSDP, "Failed to add multicast membership for address %s\n", 
 			iface->str);
 	}
-
+#endif // __CYGWIN__
 	return s;
 }
 
