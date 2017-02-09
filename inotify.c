@@ -962,7 +962,7 @@ inotify_create_watches()
 			DPRINTF(E_ERROR, L_INOTIFY, "ReadDirectoryChangesW failed with 0x%x\n", GetLastError());
 		}
 
-		DPRINTF(E_INFO, L_INOTIFY, "add directry : %s : %s\n", media_path->path, path_win_style);
+		DPRINTF(E_INFO, L_INOTIFY, "Add directory : %s : %s\n", media_path->path, path_win_style);
 		media_path = media_path->next;
 	}
 
@@ -977,7 +977,7 @@ start_inotify()
 	DWORD dwError, dwResult;
 	int i, eventNo;
 	DWORD dwBytes=0;
-	DWORD timeout = 1000;
+	DWORD timeout = 5000;
 	int num_watches=0;
 
 	while( scanning )
