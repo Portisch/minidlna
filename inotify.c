@@ -425,9 +425,9 @@ inotify_insert_file(char * name, const char * path)
 			strcpy(last_dir, parent_buf);
 			parent_buf = dirname(parent_buf);
 		}
-		while( strcmp(parent_buf, "/") != 0 );
+		while( strcmp(parent_buf, "/") != 0  && strcmp(parent_buf, "//") != 0 );
 
-		if( strcmp(parent_buf, "/") == 0 )
+		if( strcmp(parent_buf, "/") == 0 || strcmp(parent_buf, "//") == 0 )
 		{
 			id = sqlite3_mprintf("%s", BROWSEDIR_ID);
 			depth = 0;
