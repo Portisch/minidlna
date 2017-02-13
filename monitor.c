@@ -769,7 +769,7 @@ quitting:
 //#include <dirent.h> // for opendir()
 #include <unistd.h> // for stat()
 
-#define BUFF_SIZE (128*1024)
+#define BUFF_SIZE (64*1024)
 
 #define WATCH_LIMIT 16
 
