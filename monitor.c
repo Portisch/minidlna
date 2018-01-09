@@ -65,7 +65,6 @@ static time_t next_pl_fill = 0;
 #ifdef __CYGWIN__
 
 #include <sys/cygwin.h>
-static time_t next_pl_fill = 0;
 
 #else // __CYGWIN__
 
@@ -417,15 +416,6 @@ monitor_insert_file(const char *name, const char *path)
 			DPRINTF(E_DEBUG, L_INOTIFY, "%s already exists\n", path);
 		return 0;
 	}
-#ifdef __CYGWIN__
-	else if( ts == st.st_mtime )
-	{
-		if( ts > 0 ) {
-			DPRINTF(E_DEBUG, L_INOTIFY, "%s already exists in db. re-new it\n", path);
-			inotify_remove_file(path);
-		}
-	}
-#endif // __CYGWIN__
 
 	/* Find the parentID. If it's not found, create all necessary parents. */
 	len = strlen(path)+1;
@@ -528,6 +518,7 @@ monitor_insert_directory(int fd, char *name, const char * path)
 		free(parent_buf);
 	}
 
+#ifndef __CYGWIN__	
 	if( fd > 0 )
 	{
 		#ifdef HAVE_INOTIFY
@@ -542,6 +533,7 @@ monitor_insert_directory(int fd, char *name, const char * path)
 		}
 		#endif
 	}
+#endif // __CYGWIN__
 
 	dir_types = valid_media_types(path);
 
@@ -811,8 +803,8 @@ insert_to_delete_from_db(int searchNo)
 			DPRINTF(E_DEBUG, L_INOTIFY, "The file/directory %s was %s.\n",
 					path_buf,
 					m_BufferTmp->Action == FILE_ACTION_RENAMED_OLD_NAME ? "renamed" : "deleted/moved away");
-			if (inotify_remove_file(path_buf) != 0)
-				inotify_remove_directory(fd, path_buf);
+			if (monitor_remove_file(path_buf) != 0)
+				monitor_remove_directory(fd, path_buf);
 		}
 		else {
 			if (!S_ISDIR(file_stat.st_mode))
@@ -826,12 +818,12 @@ insert_to_delete_from_db(int searchNo)
 							m_BufferTmp->Action ==  FILE_ACTION_ADDED ? "was created/moved here" : 
 													FILE_ACTION_RENAMED_NEW_NAME ? "is new(renamed) name" : "was changed");
 					if (file_stat.st_size != 0)
-						inotify_insert_file(esc_name, path_buf);
+						monitor_insert_file(esc_name, path_buf);
 				}
 				else if (m_BufferTmp->Action == FILE_ACTION_RENAMED_OLD_NAME)
 				{
 					DPRINTF(E_DEBUG, L_INOTIFY, "The file %s was renamed.\n", path_buf);
-					inotify_remove_file(path_buf);
+					monitor_remove_file(path_buf);
 				}
 			}
 			else
@@ -842,12 +834,12 @@ insert_to_delete_from_db(int searchNo)
 					DPRINTF(E_DEBUG, L_INOTIFY,  "The directory %s %s.\n",
 							path_buf,
 							m_BufferTmp->Action == FILE_ACTION_RENAMED_NEW_NAME ? "is new(renamed) name" : "was created/moved here");
-					inotify_insert_directory(fd, esc_name, path_buf);
+					monitor_insert_directory(fd, esc_name, path_buf);
 				}
 				else if (m_BufferTmp->Action == FILE_ACTION_RENAMED_OLD_NAME)
 				{
 					DPRINTF(E_DEBUG, L_INOTIFY, "The directory %s was renamed.\n", path_buf);
-					inotify_remove_directory(fd, path_buf);
+					monitor_remove_directory(fd, path_buf);
 				}
 			}
 		}
@@ -948,7 +940,7 @@ start_inotify()
 	DWORD timeout = 5000;
 	int num_watches=0;
 
-	while( scanning )
+	while(GETFLAG(SCANNING_MASK))
 	{
 		if( quitting )
 			goto quitting;

@@ -1370,7 +1370,7 @@ main(int argc, char **argv)
 		upnpevents_selectfds(&readset, &writeset, &max_fd);
 
 #ifdef __CYGWIN__
-		if (scanning)
+		if (GETFLAG(SCANNING_MASK))
 			timeout.tv_sec = 1;
 #endif // __CYGWIN__
 		ret = select(max_fd+1, &readset, &writeset, 0, &timeout);
